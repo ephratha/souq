@@ -451,4 +451,118 @@ router.patch('/:id/stock',
   }
 );
 
+// Add this to the existing productRoutes.js file
+// When creating a product, channelId is now required
+
+router.post('/', 
+  protect, 
+  authorize('seller', 'admin'),
+  uploadMultiple('images', 5),
+  productValidationRules(),
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          status: 'error',
+          errors: errors.array()
+        });
+      }
+      
+      // Verify channel exists and belongs to seller
+      const channel = await Channel.findById(req.body.channelId);
+      if (!channel) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid channel ID'
+        });
+      }
+      
+      // Check if seller owns the channel or is admin
+      if (channel.ownerId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+        return res.status(403).json({
+          status: 'error',
+          message: 'You do not own this channel'
+        });
+      }
+      
+      // Process uploaded images
+      const images = [];
+      let imagePath = null;
+      
+      if (req.files && req.files.length > 0) {
+        req.files.forEach(file => {
+          const imageUrl = `/uploads/${file.filename}`;
+          images.push(imageUrl);
+          if (!imagePath) imagePath = imageUrl;
+        });
+      }
+      
+      // Create product with channelId
+      const productData = {
+        ...req.body,
+        sellerId: req.user._id,
+        channelId: req.body.channelId, // Required now
+        images,
+        imagePath: imagePath || req.body.imagePath,
+        price: parseFloat(req.body.price),
+        stock: parseInt(req.body.stock) || 0,
+        discount: parseInt(req.body.discount) || 0
+      };
+      
+      const product = await Product.create(productData);
+      
+      // Post to Telegram channel (uses channel's chat ID)
+      postProductToChannel(product, images).catch(err => {
+        console.error('Telegram post error:', err);
+      });
+      
+      await product.populate('sellerId', 'name email');
+      await product.populate('channelId', 'name chatId');
+      
+      res.status(201).json({
+        status: 'success',
+        message: 'Product created successfully',
+        data: product
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+  }
+);
+
+// Also add route to get products by channel
+router.get('/channel/:channelId', async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const { limit = 20, page = 1 } = req.query;
+    
+    const products = await Product.findByChannel(channelId, {
+      limit: parseInt(limit),
+      skip: (parseInt(page) - 1) * parseInt(limit)
+    });
+    
+    const total = await Product.countDocuments({ channelId, isActive: true });
+    
+    res.status(200).json({
+      status: 'success',
+      data: products,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
