@@ -49,6 +49,12 @@ const productSchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Seller ID is required']
   },
+  // NEW FIELD: Link product to specific Telegram channel
+  channelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Channel',
+    required: [true, 'Channel ID is required - product must belong to a Telegram channel']
+  },
   stock: {
     type: Number,
     required: [true, 'Stock quantity is required'],
@@ -132,9 +138,11 @@ const productSchema = new mongoose.Schema({
 productSchema.index({ title: 'text', description: 'text' });
 productSchema.index({ category: 1 });
 productSchema.index({ sellerId: 1 });
+productSchema.index({ channelId: 1 }); // NEW INDEX
 productSchema.index({ price: 1 });
 productSchema.index({ createdAt: -1 });
 productSchema.index({ averageRating: -1 });
+productSchema.index({ channelId: 1, createdAt: -1 }); // Compound index for channel products
 
 // Update discounted price when price or discount changes
 productSchema.pre('save', function(next) {
@@ -196,6 +204,10 @@ productSchema.statics.searchProducts = function(searchTerm, filters = {}) {
     query.category = filters.category;
   }
   
+  if (filters.channelId) {
+    query.channelId = filters.channelId;
+  }
+  
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
     query.price = {};
     if (filters.minPrice) query.price.$gte = filters.minPrice;
@@ -227,7 +239,22 @@ productSchema.statics.searchProducts = function(searchTerm, filters = {}) {
     productsQuery = productsQuery.skip(filters.skip);
   }
   
-  return productsQuery.populate('sellerId', 'name email');
+  return productsQuery
+    .populate('sellerId', 'name email')
+    .populate('channelId', 'name chatId telegramLink');
+};
+
+// Get products by channel
+productSchema.statics.findByChannel = function(channelId, options = {}) {
+  const { limit = 20, skip = 0, sortBy = 'createdAt', sortOrder = 'desc' } = options;
+  const sortOptions = {};
+  sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+  
+  return this.find({ channelId, isActive: true })
+    .sort(sortOptions)
+    .limit(limit)
+    .skip(skip)
+    .populate('sellerId', 'name email');
 };
 
 // Virtual for formatted price (ETB currency)
@@ -242,7 +269,6 @@ productSchema.virtual('formattedDiscountedPrice').get(function() {
   return null;
 });
 
-// Virtual for discount percentage display
 productSchema.virtual('discountPercentage').get(function() {
   return this.discount > 0 ? `${this.discount}% OFF` : null;
 });
