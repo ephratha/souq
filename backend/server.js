@@ -4,6 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const path = require('path');
+const channelRoutes = require('./routes/channelRoutes');
 require('dotenv').config();
 
 // Import routes
@@ -13,6 +14,11 @@ const orderRoutes = require('./routes/orderRoutes');
 
 // Import middleware
 const errorMiddleware = require('./middleware/errorMiddleware');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/channels', channelRoutes); // NEW
+app.use('/api/orders', orderRoutes);
 
 // Initialize express app
 const app = express();
@@ -107,5 +113,7 @@ process.on('unhandledRejection', (error) => {
 });
 
 startServer();
+
+
 
 module.exports = app;
