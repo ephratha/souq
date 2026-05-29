@@ -1,15 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 const CartPage = () => {
-  const [cart, setCart] = useState([]);
-  const navigate = useNavigate();
-
-  useEffect(() => {
+  const [cart, setCart] = useState(() => {
     const savedCart = JSON.parse(localStorage.getItem('cart')) || [];
-    setCart(savedCart);
-  }, []);
+    return savedCart;
+  });
+  const navigate = useNavigate();
 
   const updateQty = (id, delta) => {
     const newCart = cart.map(item => 
